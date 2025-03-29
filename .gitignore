@@ -1,2 +1,10 @@
 go.mod
 go.sum
+*.exe
+
+tmp/
+database/connection_.go.txt
+database/migrations_.go.txt
+middleware/transaction_.go.txt
+routes/router_.go.txt
+example/main_.go.txt

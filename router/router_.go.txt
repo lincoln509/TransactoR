@@ -1,16 +1,11 @@
 package routes
 
 import (
+	"TransactoR/middleware"
+	logging "TransactoR/middleware"
 	"net/http"
 
-	// "TransactoR/logging"
-	// "TransactoR/middleware"
-
-	// "lib/middleware"
-
 	"github.com/gorilla/mux"
-	logging "github.com/lincoln509/TransactoR/middleware"
-	// "github.com/lincoln509/TransactoR/middleware"
 )
 
 type RouteConfig struct {
@@ -36,7 +31,7 @@ func NewRouter(logger logging.Logger) *Router {
 }
 
 func (r *Router) AddTransactionalRoute(config RouteConfig) {
-	handlerChain := r.TransactionHandler.Wrap(config.Handler)
+	handlerChain := r.TransactionHandler.WrapTransaction(config.Handler)
 
 	for _, mw := range config.Middlewares {
 		handlerChain = mw(handlerChain)

@@ -2,71 +2,66 @@ package main
 
 import (
 	"TransactoR/database"
-	"TransactoR/dbctx"
-	"TransactoR/logging"
-	"TransactoR/routes"
+	"TransactoR/middleware"
+
+	// "TransactoR/router"
+	"TransactoR/router"
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
-	"gorm.io/gorm/logger"
+	"gorm.io/gorm"
 )
 
+type User struct {
+	gorm.Model
+	Name  string
+	Email string `gorm:"uniqueIndex"`
+}
+
 func main() {
-	// Initialisation DB
+	// Configuration DB
 	cfg := database.Config{
-		Driver:   "postgres",
-		DSN:      "host=localhost user=postgres dbname=app port=5432",
-		LogLevel: logger.Info,
+		Driver:          "postgres",
+		DSN:             "host=localhost user=lincoln password=admin dbname=postgres port=5432 sslmode=disable",
+		MaxOpenConns:    25,
+		MaxIdleConns:    5,
+		ConnMaxLifetime: 30 * time.Minute,
 	}
-	db, err := database.InitDB(cfg)
+
+	// Initialisation DB
+	db, err := database.Init(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Modèles à migrer
-	// type User struct {
-	// }
-
-	// type Product struct {
-	// }
-	// models := []interface{}{
-	// 	&User{},
-	// 	&Product{},
-	// }
-
-	// Initialisation avec migrations
-	// db, err := database.InitDBWithMigrations(cfg, models)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	// Migrations
+	if err := database.AutoMigrate(db, []interface{}{&User{}}); err != nil {
+		log.Fatal(err)
+	}
 
 	// Création routeur
-	logger := &logging.DefaultLogger{}
-	router := routes.NewRouter(logger)
+	r := router.New(db)
 
-	// Déclaration route transactionnelle
-	router.AddTransactionalRoute(routes.RouteConfig{
-		Path:    "/users",
-		Method:  "POST",
-		Handler: createUserHandler,
-	})
+	// Déclaration route
+	r.AddRoute("/users", "POST", createUser)
 
-	db.http.ListenAndServe(":8080", router)
-	// http.ListenAndServe(":8080", router)
+	// Démarrage serveur
+	log.Println("Serveur démarré sur :8080")
+	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
-func createUserHandler(w http.ResponseWriter, r *http.Request) {
-	tx, err := dbctx.TxFromContext(r.Context())
+func createUser(w http.ResponseWriter, r *http.Request) {
+	tx, err := middleware.GetTx(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Logique métier
-	user := User{Name: "Test"}
+	user := User{Name: "John", Email: "john@example.com"}
 	if err := tx.Create(&user).Error; err != nil {
-		http.Error(w, "Erreur de création", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 

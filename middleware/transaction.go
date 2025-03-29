@@ -2,54 +2,40 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
-	"TransactoR/context"
-	"TransactoR/database"
-	"TransactoR/logging"
-
+	"github.com/gorilla/mux"
 	"gorm.io/gorm"
 )
 
-type TransactionHandler struct {
-	DB     *gorm.DB
-	Logger logging.Logger
-}
+type ctxKey string
 
-func NewTransactionHandler(logger logging.Logger) *TransactionHandler {
-	return &TransactionHandler{
-		DB:     database.GetDB(),
-		Logger: logger,
-	}
-}
+const TxKey ctxKey = "db_tx"
 
-func (th *TransactionHandler) Wrap(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tx := th.DB.Begin()
-		th.Logger.Info(r, "Transaction démarrée")
+func Transaction(db *gorm.DB) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			tx := db.Begin()
+			defer func() {
+				if r := recover(); r != nil {
+					tx.Rollback()
+					panic(r)
+				}
+			}()
 
-		// Création d'un wrapper pour capturer le status
-		rw := &responseWriter{w, http.StatusOK}
+			ctx := context.WithValue(r.Context(), TxKey, tx)
+			r = r.WithContext(ctx)
 
-		defer func() {
-			if rec := recover(); rec != nil {
+			next.ServeHTTP(w, r)
+
+			if responseWriter, ok := w.(*responseWriter); ok && responseWriter.status >= 400 {
 				tx.Rollback()
-				th.Logger.Error(r, "Transaction annulée (panic): %v", rec)
-				http.Error(w, "Erreur interne", http.StatusInternalServerError)
-			}
-
-			if rw.status >= 400 {
-				tx.Rollback()
-				th.Logger.Warn(r, "Transaction annulée (status %d)", rw.status)
 			} else {
 				tx.Commit()
-				th.Logger.Info(r, "Transaction validée")
 			}
-		}()
-
-		ctx := context.WithValue(r.Context(), dbctx.TxKey, tx)
-		next.ServeHTTP(rw, r.WithContext(ctx))
-	})
+		})
+	}
 }
 
 type responseWriter struct {
@@ -60,4 +46,12 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.status = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+func GetTx(ctx context.Context) (*gorm.DB, error) {
+	tx, ok := ctx.Value(TxKey).(*gorm.DB)
+	if !ok {
+		return nil, fmt.Errorf("transaction non trouvée")
+	}
+	return tx, nil
 }
