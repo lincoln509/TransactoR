@@ -2,7 +2,9 @@ package main
 
 import (
 	"TransactoR/database"
+	"TransactoR/handlers"
 	"TransactoR/middleware"
+	"TransactoR/model"
 
 	// "TransactoR/router"
 	"TransactoR/router"
@@ -10,15 +12,7 @@ import (
 	"log"
 	"net/http"
 	"time"
-
-	"gorm.io/gorm"
 )
-
-type User struct {
-	gorm.Model
-	Name  string
-	Email string `gorm:"uniqueIndex"`
-}
 
 func main() {
 	// Configuration DB
@@ -37,15 +31,31 @@ func main() {
 	}
 
 	// Migrations
-	if err := database.AutoMigrate(db, []interface{}{&User{}}); err != nil {
+	if err := database.AutoMigrate(db, []interface{}{&model.User{}}); err != nil {
 		log.Fatal(err)
 	}
 
 	// Création routeur
 	r := router.New(db)
 
-	// Déclaration route
+	// Déclaration des routes
 	r.AddRoute("/users", "POST", createUser)
+	// r.AddRoute("/users", "GET", handlers.Get())
+	// r.AddRoute("/users/all", "GET", handlers.GetUsersHandler)
+	// r.AddRoute("/users", "PUT", handlers.UpdateUserHandler)
+	// r.AddRoute("/users", "DELETE", handlers.DeleteUserHandler)
+
+	// Création du repository générique
+	userRepo := handlers.NewRepository(db, model.User{})
+
+	// Création des handlers
+	userHandler := handlers.NewCRUDHandler(userRepo)
+
+	// Enregistrement des routes CRUD
+	handlers.RCRUDRoutes(r.Router, "/users", userHandler)
+
+	// Démarrage du serveur
+	http.ListenAndServe(":8080", r)
 
 	// Démarrage serveur
 	log.Println("Serveur démarré sur :8080")
@@ -59,7 +69,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := User{Name: "John", Email: "john@example.com"}
+	user := model.User{Name: "John", Email: "john@example.com"}
 	if err := tx.Create(&user).Error; err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

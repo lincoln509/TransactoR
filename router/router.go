@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 
+	// "TransactoR/handlers"
 	"TransactoR/middleware"
 
 	"github.com/gorilla/mux"
@@ -23,3 +24,9 @@ func New(db *gorm.DB) *Router {
 func (r *Router) AddRoute(path, method string, handler http.HandlerFunc) {
 	r.HandleFunc(path, handler).Methods(method)
 }
+
+func GetParam(r *http.Request, name string) string {
+	vars := mux.Vars(r)
+	return vars[name]
+}
+
